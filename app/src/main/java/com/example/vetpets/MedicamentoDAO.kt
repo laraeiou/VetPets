@@ -1,291 +1,100 @@
 package com.example.vetpets
 
-import java.sql.Connection
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 
 object MedicamentoDAO {
 
+    private val db = FirebaseFirestore.getInstance()
+    private const val COLECCION = "medicamentos"
+
+    // =========================================================
+    // OBTENER MEDICAMENTOS DE UNA MASCOTA
+    // =========================================================
     fun obtenerMedicamentos(
-        idMascota: Int
-    ): List<Medicamento> {
-
-        val lista =
-            mutableListOf<Medicamento>()
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return lista
-            }
-
-            val sql = """
-                SELECT
-                    IdMedicamento,
-                    IdMascota,
-                    NombreMedicamento,
-                    Dosis,
-                    Frecuencia,
-                    FechaInicio,
-                    FechaFin,
-                    Indicaciones
-                FROM Medicamentos
-                WHERE IdMascota = ?
-                ORDER BY FechaInicio DESC
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idMascota
-            )
-
-            val resultado =
-                statement.executeQuery()
-
-            while (resultado.next()) {
-
-                lista.add(
-
-                    Medicamento(
-
-                        idMedicamento =
-                            resultado.getInt(
-                                "IdMedicamento"
-                            ),
-
-                        idMascota =
-                            resultado.getInt(
-                                "IdMascota"
-                            ),
-
-                        nombreMedicamento =
-                            resultado.getString(
-                                "NombreMedicamento"
-                            ),
-
-                        dosis =
-                            resultado.getString(
-                                "Dosis"
-                            ) ?: "",
-
-                        frecuencia =
-                            resultado.getString(
-                                "Frecuencia"
-                            ) ?: "",
-
-                        fechaInicio =
-                            resultado.getString(
-                                "FechaInicio"
-                            ) ?: "",
-
-                        fechaFin =
-                            resultado.getString(
-                                "FechaFin"
-                            ) ?: "",
-
-                        indicaciones =
-                            resultado.getString(
-                                "Indicaciones"
-                            ) ?: ""
-                    )
-                )
-            }
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return lista
-    }
-
-
-    fun registrarMedicamento(
-
         idMascota: Int,
-
-        nombreMedicamento: String,
-
-        dosis: String,
-
-        frecuencia: String,
-
-        fechaInicio: String,
-
-        fechaFin: String,
-
-        indicaciones: String
-
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
+        onResult: (List<Medicamento>) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idMascota", idMascota)
+            .orderBy("fechaInicio", Query.Direction.DESCENDING)
+            .get()
+            .addOnSuccessListener { documents ->
+                val lista = mutableListOf<Medicamento>()
+                for (doc in documents) {
+                    val medicamento = Medicamento(
+                        idMedicamento = doc.getLong("idMedicamento")?.toInt() ?: 0,
+                        idMascota = doc.getLong("idMascota")?.toInt() ?: 0,
+                        nombreMedicamento = doc.getString("nombreMedicamento") ?: "",
+                        dosis = doc.getString("dosis") ?: "",
+                        frecuencia = doc.getString("frecuencia") ?: "",
+                        fechaInicio = doc.getString("fechaInicio") ?: "",
+                        fechaFin = doc.getString("fechaFin") ?: "",
+                        indicaciones = doc.getString("indicaciones") ?: ""
+                    )
+                    lista.add(medicamento)
+                }
+                onResult(lista)
             }
-
-            val sql = """
-                INSERT INTO Medicamentos
-                (
-                    IdMascota,
-                    NombreMedicamento,
-                    Dosis,
-                    Frecuencia,
-                    FechaInicio,
-                    FechaFin,
-                    Indicaciones
-                )
-                VALUES
-                (
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?
-                )
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idMascota
-            )
-
-            statement.setString(
-                2,
-                nombreMedicamento
-            )
-
-            statement.setString(
-                3,
-                dosis
-            )
-
-            statement.setString(
-                4,
-                frecuencia
-            )
-
-            if (fechaInicio.isBlank()) {
-
-                statement.setNull(
-                    5,
-                    java.sql.Types.DATE
-                )
-
-            } else {
-
-                statement.setString(
-                    5,
-                    fechaInicio
-                )
+            .addOnFailureListener {
+                onResult(emptyList())
             }
-
-            if (fechaFin.isBlank()) {
-
-                statement.setNull(
-                    6,
-                    java.sql.Types.DATE
-                )
-
-            } else {
-
-                statement.setString(
-                    6,
-                    fechaFin
-                )
-            }
-
-            statement.setString(
-                7,
-                indicaciones
-            )
-
-            return statement.executeUpdate() > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
     }
 
+    // =========================================================
+    // REGISTRAR MEDICAMENTO
+    // =========================================================
+    fun registrarMedicamento(
+        idMascota: Int,
+        nombreMedicamento: String,
+        dosis: String,
+        frecuencia: String,
+        fechaInicio: String,
+        fechaFin: String,
+        indicaciones: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        val idGenerado = System.currentTimeMillis().toInt()
 
+        val nuevoMedicamento = hashMapOf(
+            "idMedicamento" to idGenerado,
+            "idMascota" to idMascota,
+            "nombreMedicamento" to nombreMedicamento,
+            "dosis" to dosis,
+            "frecuencia" to frecuencia,
+            "fechaInicio" to fechaInicio,
+            "fechaFin" to fechaFin,
+            "indicaciones" to indicaciones
+        )
+
+        db.collection(COLECCION)
+            .add(nuevoMedicamento)
+            .addOnSuccessListener { onResult(true) }
+            .addOnFailureListener { onResult(false) }
+    }
+
+    // =========================================================
+    // ELIMINAR MEDICAMENTO
+    // =========================================================
     fun eliminarMedicamento(
-        idMedicamento: Int
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
+        idMedicamento: Int,
+        onResult: (Boolean) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idMedicamento", idMedicamento)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    val docId = documents.documents[0].id
+                    db.collection(COLECCION)
+                        .document(docId)
+                        .delete()
+                        .addOnSuccessListener { onResult(true) }
+                        .addOnFailureListener { onResult(false) }
+                } else {
+                    onResult(false)
+                }
             }
-
-            val sql = """
-                DELETE FROM Medicamentos
-                WHERE IdMedicamento = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idMedicamento
-            )
-
-            return statement.executeUpdate() > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
+            .addOnFailureListener { onResult(false) }
     }
 }

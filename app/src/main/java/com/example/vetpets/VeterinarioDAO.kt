@@ -1,300 +1,123 @@
 package com.example.vetpets
 
-import java.sql.Connection
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 
 object VeterinarioDAO {
 
-    fun obtenerVeterinarios(): List<Veterinario> {
+    private val db = FirebaseFirestore.getInstance()
+    private const val COLECCION = "veterinarios"
 
-        val lista =
-            mutableListOf<Veterinario>()
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return lista
-            }
-
-            val sql = """
-                SELECT
-                    IdVeterinario,
-                    Nombre,
-                    Especialidad,
-                    Telefono,
-                    Correo
-                FROM Veterinarios
-                ORDER BY Nombre
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            val resultado =
-                statement.executeQuery()
-
-            while (resultado.next()) {
-
-                lista.add(
-
-                    Veterinario(
-
-                        idVeterinario =
-                            resultado.getInt(
-                                "IdVeterinario"
-                            ),
-
-                        nombre =
-                            resultado.getString(
-                                "Nombre"
-                            ),
-
-                        especialidad =
-                            resultado.getString(
-                                "Especialidad"
-                            ) ?: "",
-
-                        telefono =
-                            resultado.getString(
-                                "Telefono"
-                            ) ?: "",
-
-                        correo =
-                            resultado.getString(
-                                "Correo"
-                            ) ?: ""
+    // =========================================================
+    // OBTENER TODOS LOS VETERINARIOS
+    // =========================================================
+    fun obtenerVeterinarios(onResult: (List<Veterinario>) -> Unit) {
+        db.collection(COLECCION)
+            .orderBy("nombre", Query.Direction.ASCENDING)
+            .get()
+            .addOnSuccessListener { documents ->
+                val lista = mutableListOf<Veterinario>()
+                for (doc in documents) {
+                    val veterinario = Veterinario(
+                        idVeterinario = doc.getLong("idVeterinario")?.toInt() ?: 0,
+                        nombre = doc.getString("nombre") ?: "",
+                        especialidad = doc.getString("especialidad") ?: "",
+                        telefono = doc.getString("telefono") ?: "",
+                        correo = doc.getString("correo") ?: ""
                     )
-                )
+                    lista.add(veterinario)
+                }
+                onResult(lista)
             }
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
+            .addOnFailureListener {
+                onResult(emptyList())
             }
-        }
-
-        return lista
     }
 
-
+    // =========================================================
+    // REGISTRAR VETERINARIO
+    // =========================================================
     fun registrarVeterinario(
-
         nombre: String,
-
         especialidad: String,
-
         telefono: String,
+        correo: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        val idGenerado = System.currentTimeMillis().toInt()
 
-        correo: String
+        val nuevoVeterinario = hashMapOf(
+            "idVeterinario" to idGenerado,
+            "nombre" to nombre,
+            "especialidad" to especialidad,
+            "telefono" to telefono,
+            "correo" to correo
+        )
 
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
-            }
-
-            val sql = """
-                INSERT INTO Veterinarios
-                (
-                    Nombre,
-                    Especialidad,
-                    Telefono,
-                    Correo
-                )
-                VALUES
-                (
-                    ?,
-                    ?,
-                    ?,
-                    ?
-                )
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setString(
-                1,
-                nombre
-            )
-
-            statement.setString(
-                2,
-                especialidad
-            )
-
-            statement.setString(
-                3,
-                telefono
-            )
-
-            statement.setString(
-                4,
-                correo
-            )
-
-            return statement.executeUpdate() > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
+        db.collection(COLECCION)
+            .add(nuevoVeterinario)
+            .addOnSuccessListener { onResult(true) }
+            .addOnFailureListener { onResult(false) }
     }
 
-
+    // =========================================================
+    // ACTUALIZAR VETERINARIO
+    // =========================================================
     fun actualizarVeterinario(
-
         idVeterinario: Int,
-
         nombre: String,
-
         especialidad: String,
-
         telefono: String,
+        correo: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idVeterinario", idVeterinario)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    val docId = documents.documents[0].id
+                    val datosActualizados = mapOf<String, Any>(
+                        "nombre" to nombre,
+                        "especialidad" to especialidad,
+                        "telefono" to telefono,
+                        "correo" to correo
+                    )
 
-        correo: String
-
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
+                    db.collection(COLECCION)
+                        .document(docId)
+                        .update(datosActualizados)
+                        .addOnSuccessListener { onResult(true) }
+                        .addOnFailureListener { onResult(false) }
+                } else {
+                    onResult(false)
+                }
             }
-
-            val sql = """
-                UPDATE Veterinarios
-                SET
-                    Nombre = ?,
-                    Especialidad = ?,
-                    Telefono = ?,
-                    Correo = ?
-                WHERE IdVeterinario = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setString(
-                1,
-                nombre
-            )
-
-            statement.setString(
-                2,
-                especialidad
-            )
-
-            statement.setString(
-                3,
-                telefono
-            )
-
-            statement.setString(
-                4,
-                correo
-            )
-
-            statement.setInt(
-                5,
-                idVeterinario
-            )
-
-            return statement.executeUpdate() > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
+            .addOnFailureListener { onResult(false) }
     }
 
-
+    // =========================================================
+    // ELIMINAR VETERINARIO
+    // =========================================================
     fun eliminarVeterinario(
-        idVeterinario: Int
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
+        idVeterinario: Int,
+        onResult: (Boolean) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idVeterinario", idVeterinario)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    val docId = documents.documents[0].id
+                    db.collection(COLECCION)
+                        .document(docId)
+                        .delete()
+                        .addOnSuccessListener { onResult(true) }
+                        .addOnFailureListener { onResult(false) }
+                } else {
+                    onResult(false)
+                }
             }
-
-            val sql = """
-                DELETE FROM Veterinarios
-                WHERE IdVeterinario = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idVeterinario
-            )
-
-            return statement.executeUpdate() > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
+            .addOnFailureListener { onResult(false) }
     }
 }

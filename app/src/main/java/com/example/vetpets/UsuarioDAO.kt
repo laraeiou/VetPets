@@ -1,198 +1,77 @@
 package com.example.vetpets
 
-import java.sql.Connection
+import com.google.firebase.firestore.FirebaseFirestore
 
 object UsuarioDAO {
 
+    private val db = FirebaseFirestore.getInstance()
+    private const val COLECCION = "usuarios"
+
+    // =========================================================
+    // VALIDAR USUARIO (LOGIN)
+    // =========================================================
     fun validarUsuario(
         usuario: String,
-        contrasena: String
-    ): Int? {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion = ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return null
+        contrasena: String,
+        onResult: (Int?) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("usuario", usuario)
+            .whereEqualTo("contrasena", contrasena)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    val doc = documents.documents[0]
+                    val idUsuario = doc.getLong("idUsuario")?.toInt() ?: 1
+                    onResult(idUsuario)
+                } else {
+                    onResult(null)
+                }
             }
-
-            val sql = """
-                SELECT IdUsuario
-                FROM Usuarios
-                WHERE Usuario = ?
-                AND Contrasena = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setString(
-                1,
-                usuario
-            )
-
-            statement.setString(
-                2,
-                contrasena
-            )
-
-            val resultado =
-                statement.executeQuery()
-
-            if (resultado.next()) {
-
-                return resultado.getInt(
-                    "IdUsuario"
-                )
+            .addOnFailureListener {
+                onResult(null)
             }
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return null
     }
 
-
+    // =========================================================
+    // VERIFICAR SI EL USUARIO YA EXISTE
+    // =========================================================
     fun usuarioExiste(
-        usuario: String
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
+        usuario: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("usuario", usuario)
+            .get()
+            .addOnSuccessListener { documents ->
+                onResult(!documents.isEmpty)
             }
-
-            val sql = """
-                SELECT COUNT(*)
-                FROM Usuarios
-                WHERE Usuario = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setString(
-                1,
-                usuario
-            )
-
-            val resultado =
-                statement.executeQuery()
-
-            if (resultado.next()) {
-
-                return resultado.getInt(1) > 0
+            .addOnFailureListener {
+                onResult(false)
             }
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
     }
 
-
+    // =========================================================
+    // REGISTRAR NUEVO USUARIO
+    // =========================================================
     fun registrarUsuario(
-
         nombre: String,
-
         usuario: String,
+        contrasena: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        val idGenerado = System.currentTimeMillis().toInt()
 
-        contrasena: String
+        val nuevoUsuario = hashMapOf(
+            "idUsuario" to idGenerado,
+            "nombre" to nombre,
+            "usuario" to usuario,
+            "contrasena" to contrasena
+        )
 
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
-            }
-
-            if (usuarioExiste(usuario)) {
-                return false
-            }
-
-            val sql = """
-                INSERT INTO Usuarios
-                (
-                    Nombre,
-                    Usuario,
-                    Contrasena
-                )
-                VALUES
-                (
-                    ?,
-                    ?,
-                    ?
-                )
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setString(
-                1,
-                nombre
-            )
-
-            statement.setString(
-                2,
-                usuario
-            )
-
-            statement.setString(
-                3,
-                contrasena
-            )
-
-            return statement.executeUpdate() > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
+        db.collection(COLECCION)
+            .add(nuevoUsuario)
+            .addOnSuccessListener { onResult(true) }
+            .addOnFailureListener { onResult(false) }
     }
 }

@@ -1,555 +1,179 @@
 package com.example.vetpets
 
-import java.sql.Connection
-import java.sql.Types
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 
 object HistorialMedicoDAO {
 
-    // =========================================================
-    // OBTENER TODO EL HISTORIAL DE UNA MASCOTA
-    // =========================================================
+    private val db = FirebaseFirestore.getInstance()
+    private const val COLECCION = "historial_medico"
 
+    // =========================================================
+    // OBTENER HISTORIAL DE UNA MASCOTA
+    // =========================================================
     fun obtenerHistorial(
-        idMascota: Int
-    ): List<HistorialMedico> {
-
-        val lista =
-            mutableListOf<HistorialMedico>()
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return lista
+        idMascota: Int,
+        onResult: (List<HistorialMedico>) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idMascota", idMascota)
+            .orderBy("fecha", Query.Direction.DESCENDING)
+            .get()
+            .addOnSuccessListener { documents ->
+                val lista = mutableListOf<HistorialMedico>()
+                for (doc in documents) {
+                    val historial = HistorialMedico(
+                        idHistorial = doc.getLong("idHistorial")?.toInt() ?: 0,
+                        idMascota = doc.getLong("idMascota")?.toInt() ?: 0,
+                        fecha = doc.getString("fecha") ?: "",
+                        motivo = doc.getString("motivo") ?: "",
+                        diagnostico = doc.getString("diagnostico") ?: "",
+                        tratamiento = doc.getString("tratamiento") ?: "",
+                        observaciones = doc.getString("observaciones") ?: "",
+                        idVeterinario = doc.getLong("idVeterinario")?.toInt(),
+                        nombreVeterinario = doc.getString("nombreVeterinario") ?: "No asignado"
+                    )
+                    lista.add(historial)
+                }
+                onResult(lista)
             }
+            .addOnFailureListener {
+                onResult(emptyList())
+            }
+    }
 
-            val sql = """
-                SELECT
-                    h.IdHistorial,
-                    h.IdMascota,
-                    h.Fecha,
-                    h.Motivo,
-                    h.Diagnostico,
-                    h.Tratamiento,
-                    h.Observaciones,
-                    h.IdVeterinario,
-                    ISNULL(v.Nombre, 'No asignado') AS NombreVeterinario
-                FROM HistorialMedico h
-                LEFT JOIN Veterinarios v
-                    ON h.IdVeterinario = v.IdVeterinario
-                WHERE h.IdMascota = ?
-                ORDER BY h.Fecha DESC
-            """.trimIndent()
+    // =========================================================
+    // OBTENER HISTORIAL POR ID
+    // =========================================================
+    fun obtenerHistorialPorId(
+        idHistorial: Int,
+        onResult: (HistorialMedico?) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idHistorial", idHistorial)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    val doc = documents.documents[0]
+                    val historial = HistorialMedico(
+                        idHistorial = doc.getLong("idHistorial")?.toInt() ?: 0,
+                        idMascota = doc.getLong("idMascota")?.toInt() ?: 0,
+                        fecha = doc.getString("fecha") ?: "",
+                        motivo = doc.getString("motivo") ?: "",
+                        diagnostico = doc.getString("diagnostico") ?: "",
+                        tratamiento = doc.getString("tratamiento") ?: "",
+                        observaciones = doc.getString("observaciones") ?: "",
+                        idVeterinario = doc.getLong("idVeterinario")?.toInt(),
+                        nombreVeterinario = doc.getString("nombreVeterinario") ?: "No asignado"
+                    )
+                    onResult(historial)
+                } else {
+                    onResult(null)
+                }
+            }
+            .addOnFailureListener {
+                onResult(null)
+            }
+    }
 
-            val statement =
-                conexion.prepareStatement(sql)
+    // =========================================================
+    // REGISTRAR HISTORIAL
+    // =========================================================
+    fun registrarHistorial(
+        idMascota: Int,
+        fecha: String,
+        motivo: String,
+        diagnostico: String,
+        tratamiento: String,
+        observaciones: String,
+        idVeterinario: Int?,
+        nombreVeterinario: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        val idGenerado = System.currentTimeMillis().toInt()
 
-            statement.setInt(
-                1,
-                idMascota
-            )
+        val nuevoHistorial = hashMapOf(
+            "idHistorial" to idGenerado,
+            "idMascota" to idMascota,
+            "fecha" to fecha,
+            "motivo" to motivo,
+            "diagnostico" to diagnostico,
+            "tratamiento" to tratamiento,
+            "observaciones" to observaciones,
+            "idVeterinario" to (idVeterinario ?: 0),
+            "nombreVeterinario" to nombreVeterinario
+        )
 
-            val resultado =
-                statement.executeQuery()
+        db.collection(COLECCION)
+            .add(nuevoHistorial)
+            .addOnSuccessListener { onResult(true) }
+            .addOnFailureListener { onResult(false) }
+    }
 
-            while (resultado.next()) {
-
-                val historial =
-                    HistorialMedico(
-
-                        idHistorial =
-                            resultado.getInt(
-                                "IdHistorial"
-                            ),
-
-                        idMascota =
-                            resultado.getInt(
-                                "IdMascota"
-                            ),
-
-                        fecha =
-                            resultado.getString(
-                                "Fecha"
-                            ),
-
-                        motivo =
-                            resultado.getString(
-                                "Motivo"
-                            ),
-
-                        diagnostico =
-                            resultado.getString(
-                                "Diagnostico"
-                            ),
-
-                        tratamiento =
-                            resultado.getString(
-                                "Tratamiento"
-                            ),
-
-                        observaciones =
-                            resultado.getString(
-                                "Observaciones"
-                            ) ?: "",
-
-                        idVeterinario =
-                            resultado.getObject(
-                                "IdVeterinario"
-                            ) as? Int,
-
-                        nombreVeterinario =
-                            resultado.getString(
-                                "NombreVeterinario"
-                            )
+    // =========================================================
+    // ACTUALIZAR HISTORIAL
+    // =========================================================
+    fun actualizarHistorial(
+        idHistorial: Int,
+        fecha: String,
+        motivo: String,
+        diagnostico: String,
+        tratamiento: String,
+        observaciones: String,
+        idVeterinario: Int?,
+        nombreVeterinario: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idHistorial", idHistorial)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    val docId = documents.documents[0].id
+                    val datosActualizados = mapOf<String, Any>(
+                        "fecha" to fecha,
+                        "motivo" to motivo,
+                        "diagnostico" to diagnostico,
+                        "tratamiento" to tratamiento,
+                        "observaciones" to observaciones,
+                        "idVeterinario" to (idVeterinario ?: 0),
+                        "nombreVeterinario" to nombreVeterinario
                     )
 
-                lista.add(
-                    historial
-                )
+                    db.collection(COLECCION)
+                        .document(docId)
+                        .update(datosActualizados)
+                        .addOnSuccessListener { onResult(true) }
+                        .addOnFailureListener { onResult(false) }
+                } else {
+                    onResult(false)
+                }
             }
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-
-                conexion?.close()
-
-            } catch (e: Exception) {
-
-                e.printStackTrace()
-            }
-        }
-
-        return lista
+            .addOnFailureListener { onResult(false) }
     }
 
-
     // =========================================================
-    // OBTENER UNA CONSULTA POR ID
+    // ELIMINAR HISTORIAL
     // =========================================================
-
-    fun obtenerHistorialPorId(
-        idHistorial: Int
-    ): HistorialMedico? {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return null
-            }
-
-            val sql = """
-                SELECT
-                    h.IdHistorial,
-                    h.IdMascota,
-                    h.Fecha,
-                    h.Motivo,
-                    h.Diagnostico,
-                    h.Tratamiento,
-                    h.Observaciones,
-                    h.IdVeterinario,
-                    ISNULL(v.Nombre, 'No asignado') AS NombreVeterinario
-                FROM HistorialMedico h
-                LEFT JOIN Veterinarios v
-                    ON h.IdVeterinario = v.IdVeterinario
-                WHERE h.IdHistorial = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idHistorial
-            )
-
-            val resultado =
-                statement.executeQuery()
-
-            if (resultado.next()) {
-
-                return HistorialMedico(
-
-                    idHistorial =
-                        resultado.getInt(
-                            "IdHistorial"
-                        ),
-
-                    idMascota =
-                        resultado.getInt(
-                            "IdMascota"
-                        ),
-
-                    fecha =
-                        resultado.getString(
-                            "Fecha"
-                        ),
-
-                    motivo =
-                        resultado.getString(
-                            "Motivo"
-                        ),
-
-                    diagnostico =
-                        resultado.getString(
-                            "Diagnostico"
-                        ),
-
-                    tratamiento =
-                        resultado.getString(
-                            "Tratamiento"
-                        ),
-
-                    observaciones =
-                        resultado.getString(
-                            "Observaciones"
-                        ) ?: "",
-
-                    idVeterinario =
-                        resultado.getObject(
-                            "IdVeterinario"
-                        ) as? Int,
-
-                    nombreVeterinario =
-                        resultado.getString(
-                            "NombreVeterinario"
-                        )
-                )
-            }
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-
-                conexion?.close()
-
-            } catch (e: Exception) {
-
-                e.printStackTrace()
-            }
-        }
-
-        return null
-    }
-
-
-    // =========================================================
-    // REGISTRAR CONSULTA MÉDICA
-    // =========================================================
-
-    fun registrarHistorial(
-
-        idMascota: Int,
-
-        fecha: String,
-
-        motivo: String,
-
-        diagnostico: String,
-
-        tratamiento: String,
-
-        observaciones: String,
-
-        idVeterinario: Int?
-
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
-            }
-
-            val sql = """
-                INSERT INTO HistorialMedico
-                (
-                    IdMascota,
-                    Fecha,
-                    Motivo,
-                    Diagnostico,
-                    Tratamiento,
-                    Observaciones,
-                    IdVeterinario
-                )
-                VALUES
-                (
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?
-                )
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idMascota
-            )
-
-            statement.setString(
-                2,
-                fecha
-            )
-
-            statement.setString(
-                3,
-                motivo
-            )
-
-            statement.setString(
-                4,
-                diagnostico
-            )
-
-            statement.setString(
-                5,
-                tratamiento
-            )
-
-            statement.setString(
-                6,
-                observaciones
-            )
-
-            if (idVeterinario != null) {
-
-                statement.setInt(
-                    7,
-                    idVeterinario
-                )
-
-            } else {
-
-                statement.setNull(
-                    7,
-                    Types.INTEGER
-                )
-            }
-
-            val filasAfectadas =
-                statement.executeUpdate()
-
-            return filasAfectadas > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-
-                conexion?.close()
-
-            } catch (e: Exception) {
-
-                e.printStackTrace()
-            }
-        }
-
-        return false
-    }
-
-
-    // =========================================================
-    // ACTUALIZAR CONSULTA MÉDICA
-    // =========================================================
-
-    fun actualizarHistorial(
-
-        idHistorial: Int,
-
-        fecha: String,
-
-        motivo: String,
-
-        diagnostico: String,
-
-        tratamiento: String,
-
-        observaciones: String,
-
-        idVeterinario: Int?
-
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
-            }
-
-            val sql = """
-                UPDATE HistorialMedico
-                SET
-                    Fecha = ?,
-                    Motivo = ?,
-                    Diagnostico = ?,
-                    Tratamiento = ?,
-                    Observaciones = ?,
-                    IdVeterinario = ?
-                WHERE IdHistorial = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setString(
-                1,
-                fecha
-            )
-
-            statement.setString(
-                2,
-                motivo
-            )
-
-            statement.setString(
-                3,
-                diagnostico
-            )
-
-            statement.setString(
-                4,
-                tratamiento
-            )
-
-            statement.setString(
-                5,
-                observaciones
-            )
-
-            if (idVeterinario != null) {
-
-                statement.setInt(
-                    6,
-                    idVeterinario
-                )
-
-            } else {
-
-                statement.setNull(
-                    6,
-                    Types.INTEGER
-                )
-            }
-
-            statement.setInt(
-                7,
-                idHistorial
-            )
-
-            val filasAfectadas =
-                statement.executeUpdate()
-
-            return filasAfectadas > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-
-                conexion?.close()
-
-            } catch (e: Exception) {
-
-                e.printStackTrace()
-            }
-        }
-
-        return false
-    }
-
-
-    // =========================================================
-    // ELIMINAR CONSULTA MÉDICA
-    // =========================================================
-
     fun eliminarHistorial(
-        idHistorial: Int
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
+        idHistorial: Int,
+        onResult: (Boolean) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idHistorial", idHistorial)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    val docId = documents.documents[0].id
+                    db.collection(COLECCION)
+                        .document(docId)
+                        .delete()
+                        .addOnSuccessListener { onResult(true) }
+                        .addOnFailureListener { onResult(false) }
+                } else {
+                    onResult(false)
+                }
             }
-
-            val sql = """
-                DELETE FROM HistorialMedico
-                WHERE IdHistorial = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idHistorial
-            )
-
-            val filasAfectadas =
-                statement.executeUpdate()
-
-            return filasAfectadas > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-
-                conexion?.close()
-
-            } catch (e: Exception) {
-
-                e.printStackTrace()
-            }
-        }
-
-        return false
+            .addOnFailureListener { onResult(false) }
     }
 }

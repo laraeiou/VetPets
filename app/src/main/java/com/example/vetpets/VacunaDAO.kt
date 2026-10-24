@@ -1,251 +1,94 @@
 package com.example.vetpets
 
-import java.sql.Connection
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 
 object VacunaDAO {
 
+    private val db = FirebaseFirestore.getInstance()
+    private const val COLECCION = "vacunas"
+
+    // =========================================================
+    // OBTENER VACUNAS DE UNA MASCOTA
+    // =========================================================
     fun obtenerVacunas(
-        idMascota: Int
-    ): List<Vacuna> {
-
-        val lista =
-            mutableListOf<Vacuna>()
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return lista
-            }
-
-            val sql = """
-                SELECT
-                    IdVacuna,
-                    IdMascota,
-                    NombreVacuna,
-                    FechaAplicacion,
-                    ProximaDosis,
-                    Observaciones
-                FROM Vacunas
-                WHERE IdMascota = ?
-                ORDER BY FechaAplicacion DESC
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idMascota
-            )
-
-            val resultado =
-                statement.executeQuery()
-
-            while (resultado.next()) {
-
-                lista.add(
-
-                    Vacuna(
-
-                        idVacuna =
-                            resultado.getInt(
-                                "IdVacuna"
-                            ),
-
-                        idMascota =
-                            resultado.getInt(
-                                "IdMascota"
-                            ),
-
-                        nombreVacuna =
-                            resultado.getString(
-                                "NombreVacuna"
-                            ),
-
-                        fechaAplicacion =
-                            resultado.getString(
-                                "FechaAplicacion"
-                            ),
-
-                        proximaDosis =
-                            resultado.getString(
-                                "ProximaDosis"
-                            ) ?: "",
-
-                        observaciones =
-                            resultado.getString(
-                                "Observaciones"
-                            ) ?: ""
-                    )
-                )
-            }
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return lista
-    }
-
-
-    fun registrarVacuna(
-
         idMascota: Int,
-
-        nombreVacuna: String,
-
-        fechaAplicacion: String,
-
-        proximaDosis: String,
-
-        observaciones: String
-
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
+        onResult: (List<Vacuna>) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idMascota", idMascota)
+            .orderBy("fechaAplicacion", Query.Direction.DESCENDING)
+            .get()
+            .addOnSuccessListener { documents ->
+                val lista = mutableListOf<Vacuna>()
+                for (doc in documents) {
+                    val vacuna = Vacuna(
+                        idVacuna = doc.getLong("idVacuna")?.toInt() ?: 0,
+                        idMascota = doc.getLong("idMascota")?.toInt() ?: 0,
+                        nombreVacuna = doc.getString("nombreVacuna") ?: "",
+                        fechaAplicacion = doc.getString("fechaAplicacion") ?: "",
+                        proximaDosis = doc.getString("proximaDosis") ?: "",
+                        observaciones = doc.getString("observaciones") ?: ""
+                    )
+                    lista.add(vacuna)
+                }
+                onResult(lista)
             }
-
-            val sql = """
-                INSERT INTO Vacunas
-                (
-                    IdMascota,
-                    NombreVacuna,
-                    FechaAplicacion,
-                    ProximaDosis,
-                    Observaciones
-                )
-                VALUES
-                (
-                    ?,
-                    ?,
-                    ?,
-                    ?,
-                    ?
-                )
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idMascota
-            )
-
-            statement.setString(
-                2,
-                nombreVacuna
-            )
-
-            statement.setString(
-                3,
-                fechaAplicacion
-            )
-
-            if (proximaDosis.isBlank()) {
-
-                statement.setNull(
-                    4,
-                    java.sql.Types.DATE
-                )
-
-            } else {
-
-                statement.setString(
-                    4,
-                    proximaDosis
-                )
+            .addOnFailureListener {
+                onResult(emptyList())
             }
-
-            statement.setString(
-                5,
-                observaciones
-            )
-
-            return statement.executeUpdate() > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
     }
 
+    // =========================================================
+    // REGISTRAR VACUNA
+    // =========================================================
+    fun registrarVacuna(
+        idMascota: Int,
+        nombreVacuna: String,
+        fechaAplicacion: String,
+        proximaDosis: String,
+        observaciones: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        val idGenerado = System.currentTimeMillis().toInt()
 
+        val nuevaVacuna = hashMapOf(
+            "idVacuna" to idGenerado,
+            "idMascota" to idMascota,
+            "nombreVacuna" to nombreVacuna,
+            "fechaAplicacion" to fechaAplicacion,
+            "proximaDosis" to proximaDosis,
+            "observaciones" to observaciones
+        )
+
+        db.collection(COLECCION)
+            .add(nuevaVacuna)
+            .addOnSuccessListener { onResult(true) }
+            .addOnFailureListener { onResult(false) }
+    }
+
+    // =========================================================
+    // ELIMINAR VACUNA
+    // =========================================================
     fun eliminarVacuna(
-        idVacuna: Int
-    ): Boolean {
-
-        var conexion: Connection? = null
-
-        try {
-
-            conexion =
-                ConexionSQL.conectar()
-
-            if (conexion == null) {
-                return false
+        idVacuna: Int,
+        onResult: (Boolean) -> Unit
+    ) {
+        db.collection(COLECCION)
+            .whereEqualTo("idVacuna", idVacuna)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    val docId = documents.documents[0].id
+                    db.collection(COLECCION)
+                        .document(docId)
+                        .delete()
+                        .addOnSuccessListener { onResult(true) }
+                        .addOnFailureListener { onResult(false) }
+                } else {
+                    onResult(false)
+                }
             }
-
-            val sql = """
-                DELETE FROM Vacunas
-                WHERE IdVacuna = ?
-            """.trimIndent()
-
-            val statement =
-                conexion.prepareStatement(sql)
-
-            statement.setInt(
-                1,
-                idVacuna
-            )
-
-            return statement.executeUpdate() > 0
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        } finally {
-
-            try {
-                conexion?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        return false
+            .addOnFailureListener { onResult(false) }
     }
 }
