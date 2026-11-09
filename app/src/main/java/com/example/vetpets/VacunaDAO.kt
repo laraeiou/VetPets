@@ -9,10 +9,10 @@ object VacunaDAO {
     private const val COLECCION = "vacunas"
 
     // =========================================================
-    // OBTENER VACUNAS DE UNA MASCOTA
+    // OBTENER VACUNAS DE UNA MASCOTA (CON STRING)
     // =========================================================
     fun obtenerVacunas(
-        idMascota: Int,
+        idMascota: String,
         onResult: (List<Vacuna>) -> Unit
     ) {
         db.collection(COLECCION)
@@ -23,8 +23,8 @@ object VacunaDAO {
                 val lista = mutableListOf<Vacuna>()
                 for (doc in documents) {
                     val vacuna = Vacuna(
-                        idVacuna = doc.getLong("idVacuna")?.toInt() ?: 0,
-                        idMascota = doc.getLong("idMascota")?.toInt() ?: 0,
+                        idVacuna = doc.id, // Usamos el ID de documento de Firestore
+                        idMascota = doc.getString("idMascota") ?: "",
                         nombreVacuna = doc.getString("nombreVacuna") ?: "",
                         fechaAplicacion = doc.getString("fechaAplicacion") ?: "",
                         proximaDosis = doc.getString("proximaDosis") ?: "",
@@ -43,17 +43,14 @@ object VacunaDAO {
     // REGISTRAR VACUNA
     // =========================================================
     fun registrarVacuna(
-        idMascota: Int,
+        idMascota: String,
         nombreVacuna: String,
         fechaAplicacion: String,
         proximaDosis: String,
         observaciones: String,
         onResult: (Boolean) -> Unit
     ) {
-        val idGenerado = System.currentTimeMillis().toInt()
-
         val nuevaVacuna = hashMapOf(
-            "idVacuna" to idGenerado,
             "idMascota" to idMascota,
             "nombreVacuna" to nombreVacuna,
             "fechaAplicacion" to fechaAplicacion,
@@ -71,24 +68,13 @@ object VacunaDAO {
     // ELIMINAR VACUNA
     // =========================================================
     fun eliminarVacuna(
-        idVacuna: Int,
+        idVacuna: String,
         onResult: (Boolean) -> Unit
     ) {
         db.collection(COLECCION)
-            .whereEqualTo("idVacuna", idVacuna)
-            .get()
-            .addOnSuccessListener { documents ->
-                if (!documents.isEmpty) {
-                    val docId = documents.documents[0].id
-                    db.collection(COLECCION)
-                        .document(docId)
-                        .delete()
-                        .addOnSuccessListener { onResult(true) }
-                        .addOnFailureListener { onResult(false) }
-                } else {
-                    onResult(false)
-                }
-            }
+            .document(idVacuna)
+            .delete()
+            .addOnSuccessListener { onResult(true) }
             .addOnFailureListener { onResult(false) }
     }
 }

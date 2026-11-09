@@ -9,10 +9,10 @@ object MedicamentoDAO {
     private const val COLECCION = "medicamentos"
 
     // =========================================================
-    // OBTENER MEDICAMENTOS DE UNA MASCOTA
+    // OBTENER MEDICAMENTOS DE UNA MASCOTA (CON STRING)
     // =========================================================
     fun obtenerMedicamentos(
-        idMascota: Int,
+        idMascota: String,
         onResult: (List<Medicamento>) -> Unit
     ) {
         db.collection(COLECCION)
@@ -23,8 +23,8 @@ object MedicamentoDAO {
                 val lista = mutableListOf<Medicamento>()
                 for (doc in documents) {
                     val medicamento = Medicamento(
-                        idMedicamento = doc.getLong("idMedicamento")?.toInt() ?: 0,
-                        idMascota = doc.getLong("idMascota")?.toInt() ?: 0,
+                        idMedicamento = doc.id, // Usamos el ID de documento de Firestore
+                        idMascota = doc.getString("idMascota") ?: "",
                         nombreMedicamento = doc.getString("nombreMedicamento") ?: "",
                         dosis = doc.getString("dosis") ?: "",
                         frecuencia = doc.getString("frecuencia") ?: "",
@@ -45,7 +45,7 @@ object MedicamentoDAO {
     // REGISTRAR MEDICAMENTO
     // =========================================================
     fun registrarMedicamento(
-        idMascota: Int,
+        idMascota: String,
         nombreMedicamento: String,
         dosis: String,
         frecuencia: String,
@@ -54,10 +54,7 @@ object MedicamentoDAO {
         indicaciones: String,
         onResult: (Boolean) -> Unit
     ) {
-        val idGenerado = System.currentTimeMillis().toInt()
-
         val nuevoMedicamento = hashMapOf(
-            "idMedicamento" to idGenerado,
             "idMascota" to idMascota,
             "nombreMedicamento" to nombreMedicamento,
             "dosis" to dosis,
@@ -77,24 +74,13 @@ object MedicamentoDAO {
     // ELIMINAR MEDICAMENTO
     // =========================================================
     fun eliminarMedicamento(
-        idMedicamento: Int,
+        idMedicamento: String,
         onResult: (Boolean) -> Unit
     ) {
         db.collection(COLECCION)
-            .whereEqualTo("idMedicamento", idMedicamento)
-            .get()
-            .addOnSuccessListener { documents ->
-                if (!documents.isEmpty) {
-                    val docId = documents.documents[0].id
-                    db.collection(COLECCION)
-                        .document(docId)
-                        .delete()
-                        .addOnSuccessListener { onResult(true) }
-                        .addOnFailureListener { onResult(false) }
-                } else {
-                    onResult(false)
-                }
-            }
+            .document(idMedicamento)
+            .delete()
+            .addOnSuccessListener { onResult(true) }
             .addOnFailureListener { onResult(false) }
     }
 }
